@@ -171,7 +171,7 @@
 <h2><a class="header" href="#what-this-book-covers" id="what-this-book-covers">What This Book Covers</a></h2>
 <p>This book aims to be a comprehensive, up-to-date guide to using the web
 framework <code>darpi</code> and the crates associated with it, appropriate for beginners and old hands alike.</p>
-<h2><a class="header" href="#a-a-hrefhttpsgithubcompetar-dambovalievexample-heroku-darpidemo-appa-to-check-out" id="a-a-hrefhttpsgithubcompetar-dambovalievexample-heroku-darpidemo-appa-to-check-out">A <a href="https://github.com/petar-dambovaliev/example-heroku-darpi">demo app</a> to check out</a></h2>
+<h2><a class="header" href="#a-a-hrefhttpsgithubcomdarpi-rsexample-heroku-darpidemo-appa-to-check-out" id="a-a-hrefhttpsgithubcomdarpi-rsexample-heroku-darpidemo-appa-to-check-out">A <a href="https://github.com/darpi-rs/example-heroku-darpi">demo app</a> to check out</a></h2>
 <p>Let's go ahead!</p>
 <h1><a class="header" href="#why-darpi" id="why-darpi">Why darpi?</a></h1>
 <p>We all love how Rust allows us to write fast, safe software.
@@ -576,28 +576,38 @@ use tokio_tungstenite::{tungstenite::protocol::Role, WebSocketStream};
 
 #[handler]
 async fn hello_world(#[request] r: Request&lt;Body&gt;) -&gt; Result&lt;UpgradeWS, String&gt; {
-  let resp = UpgradeWS::from_header(r.headers());
+    let resp = UpgradeWS::from_header(r.headers())
+        .ok_or(&quot;missing SEC_WEBSOCKET_KEY header&quot;.to_string())?;
 
-  FutureJob::from(async move {
-    let upgraded = darpi::upgrade::on(r).await.unwrap();
-    let mut ws_stream = WebSocketStream::from_raw_socket(upgraded, Role::Server, None).await;
+    FutureJob::from(async move {
+        let upgraded = darpi::upgrade::on(r).await.unwrap();
+        let mut ws_stream = WebSocketStream::from_raw_socket(upgraded, Role::Server, None).await;
 
-    while let Some(msg) = ws_stream.next().await {
-      let msg = msg.unwrap();
+        while let Some(msg) = ws_stream.next().await {
+            let msg = match msg {
+                Ok(m) =&gt; m,
+                Err(e) =&gt; {
+                    println!(&quot;error trying to receive:  `{:#?}`&quot;, e);
+                    return;
+                }
+            };
 
-      if msg.is_text() || msg.is_binary() {
-        println!(&quot;received a message `{}`&quot;, msg);
-        ws_stream.send(msg).await.unwrap();
-      } else if msg.is_close() {
-        println!(&quot;closing websocket&quot;);
-        return;
-      }
-    }
-  })
-  .spawn()
-  .map_err(|e| format!(&quot;{}&quot;, e))?;
+            if msg.is_text() || msg.is_binary() {
+                println!(&quot;received a message `{}`&quot;, msg);
+                if let Err(e) = ws_stream.send(msg).await {
+                    println!(&quot;error trying to send:  `{:#?}`&quot;, e);
+                    return;
+                }
+            } else if msg.is_close() {
+                println!(&quot;closing websocket&quot;);
+                return;
+            }
+        }
+    })
+        .spawn()
+        .map_err(|e| format!(&quot;{}&quot;, e))?;
 
-  Ok(resp.unwrap())
+    Ok(resp)
 }
 <span class="boring">}
 </span></code></pre></pre>
