@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Handlers - Web Asynchronous Programming in Rust with darpi</title>
+        <title>Extractors - Web Asynchronous Programming in Rust with darpi</title>
         
         
 
@@ -95,7 +95,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded "><a href="../01_getting_started/01_chapter.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../01_getting_started/02_why_darpi.html"><strong aria-hidden="true">1.1.</strong> Why Darpi?</a></li><li class="chapter-item expanded "><a href="../01_getting_started/03_state_of_web_frameworks.html"><strong aria-hidden="true">1.2.</strong> The State of Web Frameworks</a></li></ol></li><li class="chapter-item expanded "><a href="../02_basics/01_chapter.html"><strong aria-hidden="true">2.</strong> Application</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../02_basics/02_app.html"><strong aria-hidden="true">2.1.</strong> App</a></li><li class="chapter-item expanded "><a href="../02_basics/03_handlers.html" class="active"><strong aria-hidden="true">2.2.</strong> Handlers</a></li><li class="chapter-item expanded "><a href="../02_basics/04_errors.html"><strong aria-hidden="true">2.3.</strong> Errors</a></li><li class="chapter-item expanded "><a href="../02_basics/05_middleware.html"><strong aria-hidden="true">2.4.</strong> Middleware</a></li><li class="chapter-item expanded "><a href="../02_basics/06_jobs.html"><strong aria-hidden="true">2.5.</strong> Jobs</a></li><li class="chapter-item expanded "><a href="../02_basics/07_web_sockets.html"><strong aria-hidden="true">2.6.</strong> Web sockets</a></li></ol></li><li class="chapter-item expanded "><a href="../03_advanced/01_chapter.html"><strong aria-hidden="true">3.</strong> Advanced</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../03_advanced/02_extractors.html"><strong aria-hidden="true">3.1.</strong> Extractors</a></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded "><a href="../01_getting_started/01_chapter.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../01_getting_started/02_why_darpi.html"><strong aria-hidden="true">1.1.</strong> Why Darpi?</a></li><li class="chapter-item expanded "><a href="../01_getting_started/03_state_of_web_frameworks.html"><strong aria-hidden="true">1.2.</strong> The State of Web Frameworks</a></li></ol></li><li class="chapter-item expanded "><a href="../02_basics/01_chapter.html"><strong aria-hidden="true">2.</strong> Application</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../02_basics/02_app.html"><strong aria-hidden="true">2.1.</strong> App</a></li><li class="chapter-item expanded "><a href="../02_basics/03_handlers.html"><strong aria-hidden="true">2.2.</strong> Handlers</a></li><li class="chapter-item expanded "><a href="../02_basics/04_errors.html"><strong aria-hidden="true">2.3.</strong> Errors</a></li><li class="chapter-item expanded "><a href="../02_basics/05_middleware.html"><strong aria-hidden="true">2.4.</strong> Middleware</a></li><li class="chapter-item expanded "><a href="../02_basics/06_jobs.html"><strong aria-hidden="true">2.5.</strong> Jobs</a></li><li class="chapter-item expanded "><a href="../02_basics/07_web_sockets.html"><strong aria-hidden="true">2.6.</strong> Web sockets</a></li></ol></li><li class="chapter-item expanded "><a href="../03_advanced/01_chapter.html"><strong aria-hidden="true">3.</strong> Advanced</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../03_advanced/02_extractors.html" class="active"><strong aria-hidden="true">3.1.</strong> Extractors</a></li></ol></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -163,115 +163,173 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1><a class="header" href="#handlers" id="handlers">Handlers</a></h1>
-<p>The <code>handler</code> macro has 3 optional arguments in a json like format.
-Trailing commas are not supported as of now.</p>
+                        <h1><a class="header" href="#extractors" id="extractors">Extractors</a></h1>
+<p>As we learned from the <a href="../02_basics/03_handlers.html">Handlers</a> chapter, we can get a request body by declaring <code>#[body] payload: Json&lt;Name&gt;</code> in the handler arguments. </p>
+<p>Extractors are a way to get a request body in a certain format.</p>
+<p>While the framework provides <code>Json</code>, <code>Xml</code> and <code>Yaml</code> extractor implementations, you might need to implement your own. </p>
+<p>To do that, we need to implement the <code>FromRequestBody</code> or <code>FromRequestBodyWithContainer</code> trait, depending on whether we need to use the dependency injection container.</p>
+<p>Lets start with <code>FromRequestBody</code>. The trait definition is as follows.
+As you can see, we have 2 generic types.
+If in any case, an error is returned from the trait methods, the request processing will immediately stop and an error response will be returned to the client.
+This is the reason the <code>E</code> type has <code>ResponderError</code> bounds.</p>
 <pre><pre class="playground"><code class="language-rust">
 <span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>#[handler({
-    container: Container,
-    middleware: {
-        request: [],
-        response: []
-    },
-    jobs: {
-        request: [],
-        response: []
+</span>#[async_trait]
+pub trait FromRequestBody&lt;T, E&gt;
+where
+    T: de::DeserializeOwned + 'static,
+    E: ResponderError + 'static,
+{
+    async fn assert_content_type(_content_type: Option&lt;&amp;HeaderValue&gt;) -&gt; Result&lt;(), E&gt; {
+        Ok(())
     }
-})]
-<span class="boring">}
-</span></code></pre></pre>
-<p>A request handler is an async function that accepts zero or more arguments.
-The arguments can be provided in several ways, by macro attributes.
-Handlers bound by a <code>GET</code> method do not have access to a request body.
-The return type must <code>impl darpi::response::Responder</code>. For convenience, it is implemented for all common types.</p>
-<h2><a class="header" href="#possible-arguments" id="possible-arguments">possible arguments</a></h2>
-<ul>
-<li>dependency injection container
-<ul>
-<li><code>#[inject] my_arg: Arc&lt;dyn SomeTrait&gt;</code></li>
-</ul>
-</li>
-<li>request
-<ul>
-<li><code>#[request] r: darpi::Request&lt;darpi::Body&gt;</code> consumes the entire request therefore prevents other attributes from being used except <code>#[path]</code> </li>
-<li><code>#[request_parts] rp: &amp;darpi::RequestParts</code></li>
-<li><code>#[query] q: MyStruct</code> where <code>MyStruct</code> has to implement
-<code>serde::Deserialize</code>. Furthermore, if wrapped in an <code>Option</code> it is not mandatory.</li>
-<li><code>#[path] path: MyStruct</code> where <code>MyStruct</code> has to implement
-<code>serde::Deserialize</code>. <code>/user/{id}/article/{id}</code> will deserialize both ids into <code>MyStruct</code>.</li>
-<li><code>#[body] data: impl FromRequestBody&lt;T: serde:Deserialize&gt;</code> if handler is not linked to a <code>GET</code> request</li>
-</ul>
-</li>
-<li>middleware
-<ul>
-<li><code>#[middleware::request(i) my_arg: T]</code> where <code>i</code> is a literal index of the middleware linked to the handler</li>
-<li><code>#[middleware::response(i) my_arg: T]</code> does not exist (obviously), because response middleware runs after the handler returns</li>
-</ul>
-</li>
-</ul>
-<p>While i recommend using the macros. If you really want to, you could implement the handler trait.</p>
-<pre><pre class="playground"><code class="language-rust">
-<span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use darpi_middleware::body_size_limit;
-use darpi::{app, handler, response::Responder, Method, Path, Json, Query};
-use serde::{Deserialize, Serialize};
-
-#[derive(Deserialize, Serialize, Debug, Path, Query)]
-pub struct Name {
-    name: String,
-}
-
-#[handler({
-    middleware: {
-        // roundtrip returns Result&lt;String, Error&gt;
-        // later we can access it via #[middleware::request(0)]
-        request: [roundtrip(&quot;blah&quot;)]
-    }
-})]
-async fn do_something(
-  #[request_parts] _rp: &amp;RequestParts,
-  // the request query is deserialized into Name
-  // if deseriliazation fails, it will result in an error response
-  // to make it optional wrap it in an Option&lt;Name&gt;
-  #[query] query: Name,
-  // the request path is deserialized into Name
-  #[path] path: Name,
-  // the request body is deserialized into the struct Name
-  // it is important to mention that the wrapper around Name
-  // should implement darpi::request::FromRequestBody
-  // Common formats like Json, Xml and Yaml are supported out
-  // of the box but users can implement their own
-  #[body] payload: Json&lt;Name&gt;,
-  // we can access the T from Ok(T) in the middleware result
-  #[middleware::request(0)] m_str: String, // returning a String works because darpi has implemented
-  // the Responder trait for common types
-) -&gt; String {
-  format!(
-    &quot;query: {:#?} path: {} body: {} middleware: {}&quot;,
-    query, path.name, payload.name, m_str
-  )
+    async fn extract(headers: &amp;HeaderMap, b: Body) -&gt; Result&lt;T, E&gt;;
 }
 <span class="boring">}
 </span></code></pre></pre>
-<p>An example returning a Response object.
-For more information visit</p>
-<p><a href="https://docs.rs/http/0.2.3/http/response/struct.Response.html">response</a></p>
-<p><a href="https://docs.rs/http/0.2.3/http/status/struct.StatusCode.html#associatedconstant.SEE_OTHER">status codes</a></p>
-<p><a href="https://docs.rs/hyper/0.14.5/hyper/struct.Body.html">body</a></p>
+<p>As the implementor, we need to decide whether we want to require the content type header or not.
+You can choose to not have it as a requirement from the client, then you can simply not implement it and use the default implementation.
+And finally, the <code>extract</code> method is the thing that does most of the work.
+You can very well imagine that a basic implementation of the would be as follows.</p>
 <pre><pre class="playground"><code class="language-rust">
 <span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use darpi::{handler, Body, Response, StatusCode};
+</span>use darpi::hyper::body;
+pub struct MyFormat&lt;T&gt;(pub T);
 
-#[handler]
-async fn my_handler() -&gt; Response&lt;Body&gt; {
-    Response::builder()
-        .status(StatusCode::OK)
-        .body(Default::default())
-        .unwrap()
+#[async_trait]
+impl&lt;T&gt; FromRequestBody&lt;MyFormat&lt;T&gt;, MyErr&gt; for MyFormat&lt;T&gt;
+    where
+        T: DeserializeOwned + 'static,
+{
+    async fn assert_content_type(content_type: Option&lt;&amp;HeaderValue&gt;) -&gt; Result&lt;(), MyErr&gt; {
+        if let Some(hv) = content_type {
+            if hv != &quot;application/my_format&quot; {
+                return Err(MyErr::InvalidContentType);
+            }
+            return Ok(());
+        }
+        Err(MyErr::MissingContentType)
+    }
+    async fn extract(_: &amp;HeaderMap, b: Body) -&gt; Result&lt;MyFormat&lt;T&gt;, MyErr&gt; {
+        let full_body = body::to_bytes(b).await?;
+        // here is where we need to deserialize the full_body bytes
+        // for the example, serde_json is used.
+        let ser: T = serde_json::from_slice(&amp;full_body)?;
+        Ok(MyFormat(ser))
+    }
+}
+
+#[derive(Display)]
+pub enum MyErr {
+    ReadBody(hyper::Error),
+    Serde(Error),
+    InvalidContentType,
+    MissingContentType,
+}
+
+impl From&lt;Error&gt; for MyErr {
+    fn from(e: Error) -&gt; Self {
+        Self::Serde(e)
+    }
+}
+
+impl From&lt;hyper::Error&gt; for MyErr {
+    fn from(e: hyper::Error) -&gt; Self {
+        Self::ReadBody(e)
+    }
+}
+
+impl ResponderError for MyErr {}
+<span class="boring">}
+</span></code></pre></pre>
+<p>If you have dependencies that you need to access, you can instead implement <code>FromRequestBodyWithContainer</code>.
+The implementation of the methods is exactly the same as above. The only difference is the <code>C</code> generic type that you need to specify the relevant bounds.</p>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[async_trait]
+impl&lt;F, T, E, C&gt; FromRequestBodyWithContainer&lt;T, E, C&gt; for F
+where
+    F: FromRequestBody&lt;T, E&gt; + 'static,
+    T: de::DeserializeOwned + 'static,
+    E: ResponderError + 'static,
+    C: std::any::Any + Sync + Send,
+{
+    async fn assert_content_type(content_type: Option&lt;&amp;HeaderValue&gt;, _: Arc&lt;C&gt;) -&gt; Result&lt;(), E&gt; {
+        F::assert_content_type(content_type).await
+    }
+    async fn extract(headers: &amp;HeaderMap&lt;HeaderValue&gt;, b: Body, _: Arc&lt;C&gt;) -&gt; Result&lt;T, E&gt; {
+        F::extract(headers, b).await
+    }
+}
+<span class="boring">}
+</span></code></pre></pre>
+<p>As an example, we can see the <code>graphql</code> integration implements this trait.
+As you can see the line <code>let opts = container.resolve().get();</code> is how you can fetch the specified dependency.</p>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub trait MultipartOptionsProvider: Interface {
+    fn get(&amp;self) -&gt; MultipartOptions;
+}
+
+#[derive(Component)]
+#[shaku(interface = MultipartOptionsProvider)]
+pub struct MultipartOptionsProviderImpl {
+    opts: MultipartOptions,
+}
+
+impl MultipartOptionsProvider for MultipartOptionsProviderImpl {
+    fn get(&amp;self) -&gt; MultipartOptions {
+        self.opts.clone()
+    }
+}
+
+#[async_trait]
+impl&lt;C: 'static&gt; FromRequestBodyWithContainer&lt;GraphQLBody&lt;BatchRequest&gt;, GraphQLError, C&gt;
+for GraphQLBody&lt;BatchRequest&gt;
+    where
+        C: HasComponent&lt;dyn MultipartOptionsProvider&gt;,
+{
+    async fn extract(
+        headers: &amp;HeaderMap,
+        mut body: darpi::Body,
+        container: Arc&lt;C&gt;,
+    ) -&gt; Result&lt;GraphQLBody&lt;BatchRequest&gt;, GraphQLError&gt; {
+        let content_type = headers
+            .get(http::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.to_string());
+
+        let (tx, rx): (
+            Sender&lt;std::result::Result&lt;Bytes, _&gt;&gt;,
+            Receiver&lt;std::result::Result&lt;Bytes, _&gt;&gt;,
+        ) = bounded(16);
+
+        darpi::job::FutureJob::from(async move {
+            while let Some(item) = body.next().await {
+                if tx.send(item).await.is_err() {
+                    return;
+                }
+            }
+        })
+            .spawn()
+            .map_err(|e| GraphQLError::Send(e.to_string()))?;
+
+        let opts = container.resolve().get();
+        Ok(GraphQLBody(BatchRequest(
+            async_graphql::http::receive_batch_body(
+                content_type,
+                rx.map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))
+                    .into_async_read(),
+                opts,
+            )
+                .await
+                .map_err(|e| GraphQLError::ParseRequest(e))?,
+        )))
+    }
 }
 <span class="boring">}
 </span></code></pre></pre>
@@ -281,15 +339,11 @@ async fn my_handler() -&gt; Response&lt;Body&gt; {
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
                         
-                            <a rel="prev" href="../02_basics/02_app.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../03_advanced/01_chapter.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
                         
 
-                        
-                            <a rel="next" href="../02_basics/04_errors.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                                <i class="fa fa-angle-right"></i>
-                            </a>
                         
 
                         <div style="clear: both"></div>
@@ -299,15 +353,11 @@ async fn my_handler() -&gt; Response&lt;Body&gt; {
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
                 
-                    <a rel="prev" href="../02_basics/02_app.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../03_advanced/01_chapter.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
                 
 
-                
-                    <a rel="next" href="../02_basics/04_errors.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                        <i class="fa fa-angle-right"></i>
-                    </a>
                 
             </nav>
 
